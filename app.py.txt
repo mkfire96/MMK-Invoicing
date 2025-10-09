@@ -1,0 +1,79 @@
+import streamlit as st
+import sqlite3
+from datetime import datetime
+
+st.set_page_config(page_title="MMK Invoicing Pro", layout="wide", page_icon="💼")
+st.markdown("<style>body{background-color:#1e1e1e;color:#ffffff;}</style>", unsafe_allow_html=True)
+
+# Database setup
+conn = sqlite3.connect("invoices.db")
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            email TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER,
+            description TEXT,
+            amount REAL,
+            due_date TEXT,
+            status TEXT,
+            FOREIGN KEY(client_id) REFERENCES clients(id))''')
+conn.commit()
+
+# Sidebar menu
+st.sidebar.title("MMK Invoicing Pro")
+menu = st.sidebar.radio("Menu", ["Dashboard", "Clients", "Invoices"])
+
+# Dashboard
+if menu == "Dashboard":
+    st.header("Dashboard")
+    c.execute("SELECT COUNT(*) FROM clients")
+    num_clients = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM invoices WHERE status='Unpaid'")
+    unpaid_invoices = c.fetchone()[0]
+    st.write(f"Total clients: {num_clients}")
+    st.write(f"Unpaid invoices: {unpaid_invoices}")
+
+# Clients
+elif menu == "Clients":
+    st.header("Clients")
+    with st.form("add_client"):
+        name = st.text_input("Client Name")
+        email = st.text_input("Client Email")
+        submitted = st.form_submit_button("Add Client")
+        if submitted and name and email:
+            c.execute("INSERT INTO clients (name,email) VALUES (?,?)", (name,email))
+            conn.commit()
+            st.success(f"Client '{name}' added!")
+    st.subheader("All Clients")
+    c.execute("SELECT id, name, email FROM clients")
+    clients = c.fetchall()
+    for cl in clients:
+        st.write(f"{cl[1]} - {cl[2]}")
+
+# Invoices
+elif menu == "Invoices":
+    st.header("Invoices")
+    with st.form("add_invoice"):
+        c.execute("SELECT id, name FROM clients")
+        client_list = c.fetchall()
+        client_selection = st.selectbox("Select Client", [f'{c[0]}: {c[1]}' for c in client_list])
+        description = st.text_input("Invoice Description")
+        amount = st.number_input("Amount", min_value=0.0, step=0.01)
+        due_date = st.date_input("Due Date")
+        submitted = st.form_submit_button("Create Invoice")
+        if submitted and client_selection and description and amount:
+            client_id = int(client_selection.split(":")[0])
+            c.execute("INSERT INTO invoices (client_id, description, amount, due_date, status) VALUES (?,?,?,?,?)",
+                      (client_id, description, amount, due_date.strftime("%Y-%m-%d"), "Unpaid"))
+            conn.commit()
+            st.success("Invoice created!")
+    st.subheader("All Invoices")
+    c.execute("SELECT invoices.id, clients.name, invoices.description, invoices.amount, invoices.due_date, invoices.status FROM invoices JOIN clients ON invoices.client_id = clients.id")
+    invoices = c.fetchall()
+    for inv in invoices:
+        st.write(f"ID: {inv[0]} | Client: {inv[1]} | {inv[2]} | Amount: {inv[3]} | Due: {inv[4]} | Status: {inv[5]}")
+
+st.write("Gmail reminder integration placeholder: add credentials as environment variables on Render.com")
